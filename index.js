@@ -13,7 +13,7 @@
  * - no scheduled capture: the Agent decides what to record, and only Auto Dream runs
  *   on a daily clock (as detached background work, never inside a turn).
  *
- * @module dsh-long-term-memory
+ * @module dsh-memtree
  */
 
 import { readFileSync, statSync } from 'node:fs'

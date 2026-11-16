@@ -1,4 +1,4 @@
-# dsh-long-term-memory · 长期记忆
+# dsh-memtree · 长期记忆
 
 Long-term memory for DeepSeek Harness, ported from [QwenPaw](https://github.com/agentscope-ai/QwenPaw):
 memory-as-file (`MEMORY.md`, daily notes, `digest/` knowledge), notes the agent writes itself during the
@@ -166,7 +166,7 @@ updated: 2026-10-21
 
 ```yaml
 - id: long-term-memory
-  name: 'dsh-long-term-memory'
+  name: 'dsh-memtree'
   config:
     root: long-term-memory
     language: zh
@@ -363,7 +363,7 @@ autoDream:
 
 ```yaml
 - id: long-term-memory
-  name: 'dsh-long-term-memory'
+  name: 'dsh-memtree'
   config:
     language: zh
     search:
@@ -381,7 +381,7 @@ autoDream:
 ## 安装
 
 ```bash
-dsh plugin --profile web add dsh-long-term-memory
+dsh plugin --profile web add dsh-memtree
 # 或本地开发：npm pack 后把 tgz 绝对路径交给 plugin_manager 装真实包（不要用 link: / 软链）
 ```
 
@@ -434,7 +434,7 @@ npm run lint   # node --check：index.js、client.js、src/*.js
 
 ## 验证记录
 
-- `plugin_manager install_bundle` 返回 `application: applied`，`dsh-long-term-memory` 已写入 profile bundles。
+- `plugin_manager install_bundle` 返回 `application: applied`，`dsh-memtree` 已写入 profile bundles。
 - `Config.listConfigs` 显示 `include:long-term-memory` 的 `status: schema`（激活且配置 schema 可用）。
 - `Tool.listTools` 显示 `memory_search` / `memory_dream` / `memory_status` 三个模型可见工具。
 - 实时端到端：在真实会话中调用工具，于 `$DSH_HOME/long-term-memory/<模式>/` 下生成

@@ -9,7 +9,7 @@
  * panel never reads the filesystem itself.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-long-term-memory',
+  id: 'dsh-memtree',
   factory(require) {
     const React = require('react')
     // ReMe renders documents with the shared Markdown primitive; degrade to <pre> if the

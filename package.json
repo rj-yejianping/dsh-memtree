@@ -1,16 +1,16 @@
 {
-  "name": "dsh-long-term-memory",
+  "name": "dsh-memtree",
   "version": "0.18.4",
   "type": "module",
   "description": "Long-term memory for DeepSeek Harness: MEMORY.md, daily notes the agent writes itself, nightly Auto Dream consolidation, hybrid BM25 + vector search with wikilink expansion, and a knowledge panel.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rj-yejianping/dsh-long-term-memory.git"
+    "url": "git+https://github.com/rj-yejianping/dsh-memtree.git"
   },
-  "homepage": "https://github.com/rj-yejianping/dsh-long-term-memory#readme",
+  "homepage": "https://github.com/rj-yejianping/dsh-memtree#readme",
   "bugs": {
-    "url": "https://github.com/rj-yejianping/dsh-long-term-memory/issues"
+    "url": "https://github.com/rj-yejianping/dsh-memtree/issues"
   },
   "keywords": [
     "dsh",
