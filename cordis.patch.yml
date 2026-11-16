@@ -1,0 +1,6 @@
+# dsh-long-term-memory: QwenPaw-style long-term memory for DeepSeek Harness.
+# Inserts one Host plugin row. Override `config` from the profile patch layer.
+- insert:
+    - id: long-term-memory
+      name: 'dsh-long-term-memory'
+      config: {}
