@@ -15,6 +15,7 @@
 import { stat } from 'node:fs/promises'
 import { resolvePresetRoot } from './config.js'
 import { join } from 'node:path'
+import { epochMs } from './time.js'
 
 const ROUTE_PREFIX = '/api/long-term-memory'
 
@@ -253,7 +254,9 @@ export function registerWebApi({
           counts,
           chunks,
           graph,
-          lastDreamAt: typeof meta?.lastRunAt === 'number' ? meta.lastRunAt : 0,
+          // The watermark is an ISO string; older state holds epoch ms. Both
+          // must read back as a time, otherwise the panel says "never".
+          lastDreamAt: epochMs(meta?.lastRunAt),
           embeddings: {
             enabled: runtime.config.search.embeddings.enabled === true,
             ready: embeddingsReady,

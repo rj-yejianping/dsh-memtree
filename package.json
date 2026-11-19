@@ -1,6 +1,6 @@
 {
   "name": "dsh-memtree",
-  "version": "0.18.4",
+  "version": "0.18.5",
   "type": "module",
   "description": "Long-term memory for DeepSeek Harness: MEMORY.md, daily notes the agent writes itself, nightly Auto Dream consolidation, hybrid BM25 + vector search with wikilink expansion, and a knowledge panel.",
   "license": "MIT",
@@ -41,7 +41,8 @@
     "README.md"
   ],
   "scripts": {
-    "lint": "node --check index.js && node --check client.js && for f in src/*.js; do node --check \"$f\" || exit 1; done"
+    "lint": "node --check index.js && node --check client.js && for f in src/*.js; do node --check \"$f\" || exit 1; done",
+    "test": "node --test test/*.test.js"
   },
   "dsh": {
     "bundle": {

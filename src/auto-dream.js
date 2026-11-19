@@ -18,6 +18,7 @@
  */
 
 import { buildAutoDreamPrompt, resolveLanguage } from './prompts.js'
+import { epochMs } from './time.js'
 
 const DEFAULT_DAILY_DIR = 'memory'
 const DEFAULT_DIGEST_DIR = 'digest'
@@ -57,20 +58,6 @@ function normalizeDir(value, fallback) {
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/** Parse a watermark value (ISO string, date string, or epoch ms) to ms. */
-function parseTime(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (value instanceof Date) {
-    const time = value.getTime()
-    return Number.isFinite(time) ? time : 0
-  }
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const time = Date.parse(value)
-    return Number.isFinite(time) ? time : 0
-  }
-  return 0
 }
 
 /** Parse the optional `since` argument to epoch ms. */
@@ -385,7 +372,7 @@ export class AutoDream {
       ? { ...previous.processed }
       : {}
     const sinceMs = parseSince(since)
-    const watermarkMs = sinceMs !== undefined ? sinceMs : parseTime(previous.lastRunAt)
+    const watermarkMs = sinceMs !== undefined ? sinceMs : epochMs(previous.lastRunAt)
 
     const topicPattern = new RegExp(`^${escapeRegExp(dailyDir)}/\\d{4}-\\d{2}-\\d{2}/[^/]+\\.md$`)
     const listed = (await this.store.listMarkdown([dailyDir])) ?? []

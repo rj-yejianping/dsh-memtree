@@ -32,6 +32,7 @@ import { registerWebApi } from './src/web-api.js'
 import { PresetSettings, overridesFile, readOverridesSync, writeOverrides } from './src/settings.js'
 import { stringifyFrontmatter } from './src/markdown.js'
 import { coreBudgetMessage, coreUsage } from './src/core-budget.js'
+import { dailyDue, epochMs, localDate } from './src/time.js'
 
 /** Loader plugin name. */
 export const name = 'long-term-memory'
@@ -284,6 +285,7 @@ export class MemoryRuntime {
     const topicNotes = files.filter((file) => file.relPath.startsWith(dailyPrefix) && !/\/\d{4}-\d{2}-\d{2}\.md$/.test(file.relPath)).length
     const digestNodes = files.filter((file) => file.relPath.startsWith(digestPrefix)).length
     const meta = await this.store.loadMeta('dream-state')
+    const dreamAt = epochMs(meta?.lastRunAt)
     const chunks = (await this.indexer.ensure()).chunks ?? 0
     const memoryMd = this.coreMemoryText()
     const embeddingsReady = await this.search.embeddingsReady()
@@ -294,14 +296,14 @@ export class MemoryRuntime {
           `MEMORY.md：${Buffer.byteLength(memoryMd, 'utf8')} 字节（注入上限 ${this.config.inject.memoryMdMaxBytes}）`,
           `每日索引：${dailyNotes} 个；主题笔记：${topicNotes} 个；长期知识节点：${digestNodes} 个`,
           `索引片段：${chunks} 个；向量检索：${embeddingsReady ? this.config.search.embeddings.model : '未启用'}`,
-          `上次整理：${meta?.lastRunAt ? new Date(meta.lastRunAt).toISOString() : '从未'}`,
+          `上次整理：${dreamAt > 0 ? new Date(dreamAt).toISOString() : '从未'}`,
         ].join('\n')
       : [
           `Memory root: ${this.root}`,
           `MEMORY.md: ${Buffer.byteLength(memoryMd, 'utf8')} bytes (injection limit ${this.config.inject.memoryMdMaxBytes})`,
           `Daily index pages: ${dailyNotes}; topic notes: ${topicNotes}; digest nodes: ${digestNodes}`,
           `Indexed chunks: ${chunks}; embeddings: ${embeddingsReady ? this.config.search.embeddings.model : 'disabled'}`,
-          `Last dream: ${meta?.lastRunAt ? new Date(meta.lastRunAt).toISOString() : 'never'}`,
+          `Last dream: ${dreamAt > 0 ? new Date(dreamAt).toISOString() : 'never'}`,
         ].join('\n')
     return {
       root: this.root,
@@ -310,7 +312,7 @@ export class MemoryRuntime {
       topicNotes,
       digestNodes,
       chunks,
-      lastDreamAt: meta?.lastRunAt ? new Date(meta.lastRunAt).toISOString() : '',
+      lastDreamAt: dreamAt > 0 ? new Date(dreamAt).toISOString() : '',
       embeddings: embeddingsReady ? this.config.search.embeddings.model : 'disabled',
       summary,
     }
@@ -1251,19 +1253,45 @@ export function apply(ctx, rawConfig) {
     // every tick means the panel's rhythm settings take effect without a reload,
     // and both the daily clock and the interval schedule share one timer.
     let lastIntervalRun = 0
+    // Local date the daily clock last fired in this process. The schedule counts
+    // as due from its HH:MM onwards, so this is what keeps it to one pass a day.
     let lastDailyDate = ''
 
     /** One dream per memory tree at a time: several sessions can share a tree. */
     const dreamsInFlight = new Set()
 
-    const runDreamForIdleAgents = () => {
+    /**
+     * Whether a tree already consolidated something today.
+     *
+     * A catch-up tick can land right after a restart, while an earlier process
+     * already ran the same night's dream. The persisted watermark is the record
+     * of that run, so consult it rather than consolidating the notes twice.
+     *
+     * @param {any} runtime - runtime owning the memory tree.
+     * @returns {Promise<boolean>} true when a dream already ran today.
+     */
+    const dreamedToday = async (runtime) => {
+      try {
+        const meta = await runtime.store.loadMeta('dream-state')
+        const last = epochMs(meta?.lastRunAt)
+        return last > 0 && localDate(new Date(last)) === localDate(new Date())
+      } catch {
+        return false
+      }
+    }
+
+    const runDreamForIdleAgents = ({ daily = false } = {}) => {
       for (const agent of ctx.agents.list()) {
         if (agent.status !== 'idle') continue
         void enabledFor(presetFor(agent))
-          .then((enabled) => {
+          .then(async (enabled) => {
             if (!enabled) return
             const runtime = runtimeFor(agent)
             if (runtime === undefined) return
+            if (dreamsInFlight.has(runtime.root)) return
+            if (daily && (await dreamedToday(runtime))) return
+            // Re-check after the await: another idle Agent sharing this tree may
+            // have started its own dream in the meantime.
             if (dreamsInFlight.has(runtime.root)) return
             // Dream makes several model calls, so it runs detached for the same
             // reason Auto Memory does: holding the Agent's maintenance phase would
@@ -1281,22 +1309,19 @@ export function apply(ctx, rawConfig) {
       }
     }
 
-    const nowClock = (date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-    const nowDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-
     timerCtx.effect(
       () =>
         timerCtx.interval(() => {
           if (!config.autoDream.enabled || !config.autoDream.autoRun) return
           const now = new Date()
           const daily = config.autoDream.dailyAt
-          if (daily.length > 0 && nowClock(now) === daily) {
-            const today = nowDate(now)
-            if (lastDailyDate !== today) {
-              lastDailyDate = today
-              debug(`scheduled dream (daily ${daily})`)
-              runDreamForIdleAgents()
-            }
+          // Due from HH:MM onwards rather than only during that exact minute: a
+          // process that was not running at HH:MM takes one catch-up pass
+          // instead of dropping the whole day without a trace.
+          if (dailyDue(now, daily, lastDailyDate)) {
+            lastDailyDate = localDate(now)
+            debug(`scheduled dream (daily ${daily})`)
+            runDreamForIdleAgents({ daily: true })
           }
           const minutes = config.autoDream.intervalMinutes
           if (minutes > 0) {
