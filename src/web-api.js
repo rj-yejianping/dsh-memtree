@@ -13,7 +13,7 @@
  */
 
 import { stat } from 'node:fs/promises'
-import { resolvePresetRoot } from './config.js'
+import { mergedModel, resolvePresetRoot } from './config.js'
 import { join } from 'node:path'
 import { epochMs } from './time.js'
 
@@ -43,18 +43,19 @@ async function readBody(request) {
  * Describe the effective background route for one task, without its credential.
  * @param {object} config - normalized plugin configuration.
  * @param {'autoDream'} task - task name.
- * @returns {{model: string, baseURL: string, source: string}} route summary.
+ * @returns {{route: string, provider: string, model: string, baseURL: string, source: string}} route summary.
  */
 function describeModel(config, task) {
-  const base = config.backgroundModel ?? {}
-  const override = config[task]?.model ?? {}
-  const route = { ...base }
-  for (const [key, value] of Object.entries(override)) {
-    if (value !== undefined && value !== null && value !== '') route[key] = value
-  }
-  const model = typeof route.model === 'string' ? route.model : ''
-  const baseURL = typeof route.baseURL === 'string' ? route.baseURL : ''
+  // One place decides where a task call goes: the panel must report the same
+  // route the helper will actually use, including "no endpoint, Agent default".
+  const resolved = mergedModel(config, task)
+  const model = typeof resolved.model === 'string' ? resolved.model : ''
+  const baseURL = typeof resolved.baseURL === 'string' ? resolved.baseURL : ''
+  const provider = typeof resolved.provider === 'string' ? resolved.provider : ''
+  const label = typeof config?.[task]?.model?.route === 'string' ? config[task].model.route : ''
   return {
+    route: label,
+    provider,
     model: model.length > 0 ? model : 'agent-default',
     baseURL,
     source: baseURL.length > 0 ? 'direct' : model.length > 0 ? 'host-provider' : 'agent-default',
@@ -177,6 +178,7 @@ export function registerWebApi({
   saveSettings,
   storeCredential,
   overridesFile,
+  listModels,
 }) {
   /**
    * Resolve the runtime a panel request targets.
@@ -350,6 +352,19 @@ export function registerWebApi({
     }
   }
 
+  /**
+   * Models the Host already routes, so the panel can offer them instead of
+   * asking for a private endpoint and key.
+   */
+  const modelsRoute = async () => {
+    if (typeof listModels !== 'function') return json({ ok: true, value: { providers: [] } })
+    try {
+      return json({ ok: true, value: await listModels() })
+    } catch (error) {
+      return failure(error instanceof Error ? error.message : String(error), 500)
+    }
+  }
+
   const settingsRoute = async () => {
     try {
       const value = typeof readSettings === 'function' ? await readSettings() : {}
@@ -411,6 +426,7 @@ export function registerWebApi({
     ['dream', dream],
     ['presets', presets],
     ['setPreset', setPreset],
+    ['models', modelsRoute],
     ['settings', settingsRoute],
     ['saveSettings', saveSettingsRoute],
     ['setCredential', setCredentialRoute],

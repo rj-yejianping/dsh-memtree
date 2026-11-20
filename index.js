@@ -20,7 +20,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { isAbsolute, join, normalize } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 
-import { CREDENTIAL_GROUPS, DEFAULT_CONFIG, applyOverrides, isCredentialRefName, normalizeApiKeyEnv, repairOverridesDocument, resolveBaseRoot, resolveConfig, resolvePresetRoot } from './src/config.js'
+import { CREDENTIAL_GROUPS, DEFAULT_CONFIG, applyOverrides, isCredentialRefName, mergedModel, normalizeApiKeyEnv, repairOverridesDocument, resolveBaseRoot, resolveConfig, resolvePresetRoot } from './src/config.js'
 import { MemoryStore } from './src/store.js'
 import { MemoryIndexer } from './src/indexer.js'
 import { MemorySearch } from './src/search.js'
@@ -29,6 +29,7 @@ import { AutoDream } from './src/auto-dream.js'
 import { buildMemoryGuidance, resolveLanguage } from './src/prompts.js'
 import { createMemoryTools } from './src/tools.js'
 import { registerWebApi } from './src/web-api.js'
+import { listModelChoices } from './src/models.js'
 import { PresetSettings, overridesFile, readOverridesSync, writeOverrides } from './src/settings.js'
 import { stringifyFrontmatter } from './src/markdown.js'
 import { coreBudgetMessage, coreUsage } from './src/core-budget.js'
@@ -77,6 +78,7 @@ export const Config = z.object({
     maxNotesPerRun: z.number().step(1).default(4).description('Maximum daily notes consolidated in one run (bounds one night of spend).'),
     maxDigestNodes: z.number().step(1).default(40).description('Maximum digest candidates considered per note.'),
     model: z.object({
+      route: z.string().default('').description("Where Auto Dream runs: 'default' (Agent default model), 'host' (a configured Host provider), 'custom' (the baseURL below), or '' for the legacy merge of the fields below."),
       baseURL: z.string().description('Override base URL for Auto Dream only.'),
       apiKeyEnv: z.string().description('Override credential name for Auto Dream only.'),
       provider: z.string().description('Override Host provider for Auto Dream only.'),
@@ -111,26 +113,6 @@ export const Config = z.object({
   }),
   debug: z.boolean().default(false).description('Verbose plugin logging.'),
 })
-
-/**
- * Merge one task's model overrides over the shared background model route.
- *
- * The task config only carries explicitly written fields, so undefined entries
- * must not erase the shared defaults.
- *
- * @param {object} config - normalized plugin configuration.
- * @param {'autoDream'} task - task name.
- * @returns {object} effective route for that task.
- */
-function mergedModel(config, task) {
-  const base = config.backgroundModel ?? {}
-  const override = config[task]?.model ?? {}
-  const merged = { ...base }
-  for (const [key, value] of Object.entries(override)) {
-    if (value !== undefined && value !== null && value !== '') merged[key] = value
-  }
-  return merged
-}
 
 /** Truncate a string to a byte-ish budget on a line boundary. */
 function truncateText(text, maxBytes) {
@@ -1072,6 +1054,12 @@ export function apply(ctx, rawConfig) {
     saveSettings: saveEditableSettings,
     storeCredential,
     overridesFile,
+    // Resolved per request: the panel may open before the llm service is up, and
+    // a provider added in Settings → Models shows up without a plugin reload.
+    listModels: () => listModelChoices({
+      llm: ctx.get('llm'),
+      defaultSelection: defaultModelSelection,
+    }),
   })
 
   // One-shot self-heal for an overrides file that stored a secret as a name.

@@ -196,7 +196,8 @@ updated: 2026-10-21
 | `search.embeddings.*` | 关闭 | OpenAI 兼容的 `/embeddings` 端点、模型与环境变量名 |
 | `scope.mode` | `all` | `all`=每个 Agent 模式默认开启；`selected`=只在面板里勾选的模式开启 |
 | `scope.presets` | `[]` | 例外列表：`all` 下为排除名单、`selected` 下为开启名单。默认为空——**所有模式一视同仁**，包括创造模式 `cordis` |
-| `backgroundModel.*` | 空 | 夜间整理（dream）使用的模型路由：`baseURL` + `model` + `apiKeyEnv`（直连 OpenAI 兼容端点）；留空则用 Agent 默认模型 |
+| `backgroundModel.*` | 空 | 后台整理（dream）使用的模型路由：`baseURL` + `model` + `apiKeyEnv`（直连 OpenAI 兼容端点）；留空则用 Agent 默认模型 |
+| `autoDream.model.route` | `''` | 面板写入的路由标签：`default`（跟随 Agent 默认模型）/ `host`（`provider` + `model`，走 Host `llm` 服务）/ `custom`（`baseURL` 直连）；留空表示沿用同名前缀字段的合并规则 |
 | `autoDream.model` | 空 | 对 `backgroundModel` 的 dream 专用覆盖 |
 | `inject.guidance` | `true` | 是否注入记忆引导 |
 | `inject.memoryMd` | `true` | 是否注入 `MEMORY.md` 摘要 |
@@ -234,7 +235,7 @@ $DSH_HOME/long-term-memory/
 | 分组 | 字段 | 作用 |
 | --- | --- | --- |
 | 语义搜索（Embedding） | 启用 / Base URL / 模型 / 密钥值 | `memory_search` 的向量分支；留空则只做 BM25 关键词检索 |
-| 记忆整理模型（Auto Dream） | 同上 | 把每日笔记整合成长期知识时使用 |
+| 记忆整理模型（Auto Dream） | 模型（下拉）/ 最大输出 tokens / 超时 / 自定义端点（高级） | 把每日笔记整合成长期知识时使用。**模型下拉直接列出「设置 → 模型」里已配置的 provider 与模型**；默认项是「默认模型」，跟随 Agent 默认模型变化，不需要单独填 Base URL 与密钥 |
 | 记忆节奏 | 启用 Auto Dream / 按计划自动整理 / 每日时间 `HH:MM` / 或固定间隔分钟 | 只控制夜间整理；对话汇总由 Agent 自行判断 |
 
 ### 密钥只写不回显
@@ -277,9 +278,10 @@ $DSH_HOME/long-term-memory/
     "timeoutMs": 20000
   },
   "dream": {
-    "baseURL": "https://your-gateway.example.com/v1",
-    "apiKeyEnv": "UNIAPI_API_KEY",
-    "model": "your-dream-model",
+    "route": "host",
+    "provider": "h20",
+    "model": "deepseek-v4.1-flash",
+    "baseURL": "",
     "maxTokens": 8192,
     "timeoutMs": 240000
   },

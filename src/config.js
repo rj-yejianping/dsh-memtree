@@ -267,7 +267,12 @@ function normalizeModel(value, fallback = {}) {
     if (!Number.isFinite(number)) return undefined
     return Math.min(max, Math.max(min, number))
   }
+  const route = pickString('route')
   return {
+    // Where a task route goes: 'default' (Agent default model), 'host' (a
+    // registered Host provider), 'custom' (the baseURL below), or '' for a
+    // legacy row that predates the label.
+    route: route === 'default' || route === 'host' || route === 'custom' ? route : '',
     baseURL: pickString('baseURL').replace(/\/+$/, ''),
     // A route with no legal name stays empty so the Agent default model wins;
     // `backgroundModel` supplies its own fallback through DEFAULT_CONFIG.
@@ -416,6 +421,47 @@ function overrideNumber(value, min, max) {
 }
 
 /**
+ * Merge one task's model route over the shared background route.
+ *
+ * The stored task row wins over the shared `backgroundModel` row, and the
+ * explicit `route` label decides where the call goes:
+ *
+ * - `default`: the Agent default model. Whatever endpoint or model id the shared
+ *   row carries is dropped, so the panel's "默认模型" really means the Agent
+ *   default even when a profile configured a background endpoint.
+ * - `host`: a registered Host provider/model route, again with no private
+ *   endpoint and no credential.
+ * - `custom`: the OpenAI-compatible endpoint stored on the task row.
+ * - absent: legacy merge — a task field overrides the shared row only when it
+ *   is non-empty.
+ *
+ * @param {object} config - normalized plugin configuration.
+ * @param {'autoDream'} task - task name.
+ * @returns {object} effective route for that task.
+ */
+export function mergedModel(config, task) {
+  const base = config?.backgroundModel ?? {}
+  const override = config?.[task]?.model ?? {}
+  const merged = { ...base }
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined || value === null || value === '') continue
+    merged[key] = value
+  }
+  const route = typeof override.route === 'string' ? override.route : ''
+  if (route === 'default') {
+    merged.baseURL = ''
+    merged.apiKeyEnv = ''
+    merged.provider = ''
+    merged.model = ''
+  } else if (route === 'host') {
+    merged.baseURL = ''
+    merged.apiKeyEnv = ''
+  }
+  delete merged.route
+  return merged
+}
+
+/**
  * Apply panel-editable overrides onto a normalized config, in place.
  *
  * Only the three routes the settings tab owns are touched: semantic-search
@@ -446,6 +492,8 @@ export function applyOverrides(config, overrides) {
 
   const route = (source, target) => {
     if (!isPlainObject(source)) return
+    const label = typeof source.route === 'string' ? source.route.trim() : undefined
+    if (label === 'default' || label === 'host' || label === 'custom') target.route = label
     const baseURL = typeof source.baseURL === 'string' ? source.baseURL.trim().replace(/\/+$/, '') : undefined
     if (baseURL !== undefined) target.baseURL = baseURL
     const model = typeof source.model === 'string' ? source.model.trim() : undefined

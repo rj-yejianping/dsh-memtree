@@ -166,6 +166,14 @@ window.__ModuleLoader__.load({
         fieldTimeout: '超时（毫秒）',
         fieldTimeoutHint: '留空按预算自动放大：30 秒 + 每 token 5 毫秒',
         fieldEmptyMeansAgent: '留空 = 使用 Agent 默认模型',
+        fieldDreamModelDefault: '默认模型（跟随 DSH 设置里的默认模型）',
+        fieldDreamModelHint: '取自「设置 → 模型」里已配置的 provider；默认项跟随 Agent 默认模型，改默认模型时这里自动跟随。',
+        fieldCustomEndpoint: '改用自定义端点（高级）',
+        fieldCustomEndpointHint: '只有需要私有 OpenAI 兼容端点时才打开；打开后不再使用 DSH 模型列表。',
+        fieldCustomModel: '模型 ID（自定义端点）',
+        routeDefault: '默认模型',
+        routeHost: 'DSH 模型',
+        routeCustom: '自定义端点',
         save: '保存',
         saving: '保存中…',
         saved: '已保存并生效',
@@ -309,6 +317,14 @@ window.__ModuleLoader__.load({
         fieldTimeout: 'Timeout (ms)',
         fieldTimeoutHint: 'Empty = scaled from the budget: 30 s + 5 ms per token',
         fieldEmptyMeansAgent: 'Empty = Agent default model',
+        fieldDreamModelDefault: 'Default model (follows DSH Settings → Models)',
+        fieldDreamModelHint: 'Taken from the providers configured in Settings → Models; the default entry follows the Agent default model, so changing that default follows here too.',
+        fieldCustomEndpoint: 'Use a custom endpoint (advanced)',
+        fieldCustomEndpointHint: 'Only when a private OpenAI-compatible endpoint is required; while on, the DSH model list is not used.',
+        fieldCustomModel: 'Model id (custom endpoint)',
+        routeDefault: 'default model',
+        routeHost: 'DSH model',
+        routeCustom: 'custom endpoint',
         save: 'Save',
         saving: 'Saving…',
         saved: 'Saved and applied',
@@ -642,6 +658,26 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * Encode a stored Auto Dream route for the model `<select>`.
+     *
+     * '' means "follow the Agent default model"; a model id may contain '/', so
+     * only the first separator splits provider from model.
+     */
+    function routeValueOf(route) {
+      const provider = typeof route?.provider === 'string' ? route.provider.trim() : ''
+      const model = typeof route?.model === 'string' ? route.model.trim() : ''
+      return provider.length > 0 && model.length > 0 ? `${provider}/${model}` : ''
+    }
+
+    /** Decode one `<select>` value back into `{provider, model}`. */
+    function parseRouteValue(value) {
+      const text = typeof value === 'string' ? value.trim() : ''
+      const at = text.indexOf('/')
+      if (at <= 0 || at === text.length - 1) return { provider: '', model: '' }
+      return { provider: text.slice(0, at).trim(), model: text.slice(at + 1).trim() }
+    }
+
     /** Render markdown through the host primitive, or a preformatted fallback. */
     function markdownBlock(text, key) {
       const body = String(text ?? '')
@@ -668,6 +704,8 @@ window.__ModuleLoader__.load({
       const [saving, setSaving] = useState(false)
       const [savedNote, setSavedNote] = useState('')
       const [secretDraft, setSecretDraft] = useState({})
+      const [modelChoices, setModelChoices] = useState(null)
+      const [customEndpoint, setCustomEndpoint] = useState(false)
       const [workspaceBusy, setWorkspaceBusy] = useState('')
       const [dirty, setDirty] = useState(false)
       const [dreaming, setDreaming] = useState(false)
@@ -742,13 +780,42 @@ window.__ModuleLoader__.load({
             key: 'dream',
             title: TEXT.settingsDream,
             description: TEXT.settingsDreamHint,
-            fields: [
-              { name: 'baseURL', label: TEXT.fieldBaseURL, value: dream.baseURL ?? '', placeholder: TEXT.fieldEmptyMeansAgent },
-              { name: 'model', label: TEXT.fieldModel, value: dream.model ?? '', placeholder: TEXT.fieldEmptyMeansAgent },
-              { name: 'maxTokens', label: TEXT.fieldMaxTokens, value: dream.maxTokens ?? '' },
-              { name: 'timeoutMs', label: TEXT.fieldTimeout, value: dream.timeoutMs ?? '', hint: TEXT.fieldTimeoutHint },
-              secretField('dream'),
-            ],
+            fields: (() => {
+              const defaultRoute = modelChoices?.default
+              const defaultLabel = defaultRoute === undefined ? '' : `${defaultRoute.provider} / ${defaultRoute.model}`
+              const options = [
+                {
+                  value: '',
+                  label: defaultLabel.length > 0 ? `${TEXT.fieldDreamModelDefault}（${defaultLabel}）` : TEXT.fieldDreamModelDefault,
+                },
+                ...(Array.isArray(modelChoices?.providers) ? modelChoices.providers : []).flatMap((provider) =>
+                  (Array.isArray(provider.models) ? provider.models : []).map((model) => ({
+                    value: `${provider.id}/${model.id}`,
+                    label: `${model.name} · ${provider.name}`,
+                  })),
+                ),
+              ]
+              const routeField = customEndpoint ? [] : [{
+                name: 'route',
+                type: 'select',
+                label: TEXT.fieldModel,
+                value: routeValueOf(dream),
+                options,
+                hint: TEXT.fieldDreamModelHint,
+              }]
+              const customFields = customEndpoint ? [
+                { name: 'baseURL', label: TEXT.fieldBaseURL, value: dream.baseURL ?? '', placeholder: 'https://api.example.com/v1' },
+                { name: 'model', label: TEXT.fieldCustomModel, value: dream.model ?? '', placeholder: 'qwen3.7-flash' },
+                secretField('dream'),
+              ] : []
+              return [
+                ...routeField,
+                { name: 'customEndpoint', type: 'boolean', label: TEXT.fieldCustomEndpoint, hint: TEXT.fieldCustomEndpointHint, value: customEndpoint },
+                ...customFields,
+                { name: 'maxTokens', label: TEXT.fieldMaxTokens, value: dream.maxTokens ?? '' },
+                { name: 'timeoutMs', label: TEXT.fieldTimeout, value: dream.timeoutMs ?? '', hint: TEXT.fieldTimeoutHint },
+              ]
+            })(),
           },
           {
             key: 'rhythm',
@@ -762,13 +829,39 @@ window.__ModuleLoader__.load({
             ],
           },
         ]
-      }, [settingsData, secretDraft])
+      }, [settingsData, secretDraft, modelChoices, customEndpoint])
 
       const updateSetting = useCallback((group, name, value) => {
         setSavedNote('')
         setDirty(true)
         if (name === 'secret') {
           setSecretDraft((current) => ({ ...current, [group]: value }))
+          return
+        }
+        if (group === 'dream' && name === 'customEndpoint') {
+          setCustomEndpoint(value === true)
+          setSettingsData((current) => {
+            const dream = (current ?? {}).dream ?? {}
+            // Either way the stored route must stop pointing at the other kind
+            // of model; the output settings below are preserved.
+            return {
+              ...(current ?? {}),
+              dream: {
+                ...dream,
+                provider: '',
+                model: '',
+                baseURL: value === true && typeof dream.baseURL === 'string' ? dream.baseURL : '',
+              },
+            }
+          })
+          return
+        }
+        if (group === 'dream' && name === 'route') {
+          const route = parseRouteValue(value)
+          setSettingsData((current) => ({
+            ...(current ?? {}),
+            dream: { ...((current ?? {}).dream ?? {}), provider: route.provider, model: route.model, baseURL: '' },
+          }))
           return
         }
         if (group === 'rhythm') {
@@ -796,6 +889,16 @@ window.__ModuleLoader__.load({
           setSettingsData(value)
           setSettingsFile(value.overridesFile ?? '')
           setDirty(false)
+          const storedDream = value?.dream ?? {}
+          setCustomEndpoint(typeof storedDream.baseURL === 'string' && storedDream.baseURL.trim().length > 0)
+          try {
+            // A missing model list must not take the whole settings tab down:
+            // the picker keeps the "default model" entry.
+            const choices = await api('models')
+            if (mounted.current) setModelChoices(choices)
+          } catch {
+            if (mounted.current) setModelChoices(null)
+          }
         } catch (cause) {
           if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause))
         }
@@ -816,9 +919,22 @@ window.__ModuleLoader__.load({
             if (secret.length === 0) continue
             await api('setCredential', { group, value: secret })
           }
+          const dreamStored = settingsData?.dream ?? {}
+          const dreamProvider = String(dreamStored.provider ?? '').trim()
+          const dreamModelId = String(dreamStored.model ?? '').trim()
+          const dreamBaseURL = customEndpoint ? String(dreamStored.baseURL ?? '').trim() : ''
           const payload = {
             embeddings: settingsData?.embeddings ?? {},
-            dream: settingsData?.dream ?? {},
+            dream: {
+              // The route label is what lets an override say "use the Agent
+              // default" even when the profile configured a shared endpoint.
+              route: dreamBaseURL.length > 0 ? 'custom' : (dreamProvider.length > 0 && dreamModelId.length > 0 ? 'host' : 'default'),
+              provider: dreamBaseURL.length > 0 ? '' : dreamProvider,
+              model: dreamModelId,
+              baseURL: dreamBaseURL,
+              maxTokens: dreamStored.maxTokens,
+              timeoutMs: dreamStored.timeoutMs,
+            },
             rhythm: {
               autoDream: {
                 enabled: settingsData?.rhythm?.autoDream?.enabled !== false,
@@ -975,9 +1091,12 @@ window.__ModuleLoader__.load({
       const visibleFiles = (files) => (filterText.length === 0
         ? files
         : files.filter((item) => `${item.name} ${item.relPath} ${item.description ?? ''}`.toLowerCase().includes(filterText)))
-      const dreamModel = data?.models?.dream?.model && data.models.dream.model !== 'agent-default'
-        ? data.models.dream.model
-        : 'agent-default'
+      const dreamRouteInfo = data?.models?.dream ?? {}
+      const dreamModel = dreamRouteInfo.source === 'direct'
+        ? `${dreamRouteInfo.model}（${TEXT.routeCustom}）`
+        : dreamRouteInfo.source === 'host-provider'
+          ? `${dreamRouteInfo.provider ? `${dreamRouteInfo.provider} / ` : ''}${dreamRouteInfo.model}（${TEXT.routeHost}）`
+          : TEXT.routeDefault
       const graphNodes = (data?.graph?.nodes ?? []).length
       const graphEdges = (data?.graph?.edges ?? []).length
       const badge = (ok, text) => h('span', { className: `ltm-badge ${ok ? 'ok' : 'bad'}` }, h('i'), text)
@@ -1741,8 +1860,27 @@ window.__ModuleLoader__.load({
                         onChange: () => updateSetting(group.key, field.name, !field.value),
                       }),
                       h('span', null, field.label),
+                      field.hint ? h('small', null, field.hint) : null,
                     )
-                  : h(
+                  : field.type === 'select'
+                    ? h(
+                        'div',
+                        { key: field.name, className: 'ltm-field' },
+                        h('label', null, field.label),
+                        h(
+                          'select',
+                          {
+                            className: 'ltm-input',
+                            value: field.value ?? '',
+                            onChange: (event) => updateSetting(group.key, field.name, event.target.value),
+                          },
+                          ...(field.options ?? []).map((option) =>
+                            h('option', { key: option.value, value: option.value }, option.label),
+                          ),
+                        ),
+                        field.hint ? h('small', null, field.hint) : null,
+                      )
+                    : h(
                       'div',
                       { key: field.name, className: 'ltm-field' },
                       h('label', null, field.label),
