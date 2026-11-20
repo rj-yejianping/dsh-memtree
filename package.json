@@ -1,6 +1,6 @@
 {
   "name": "dsh-memtree",
-  "version": "0.18.5",
+  "version": "0.18.6",
   "type": "module",
   "description": "Long-term memory for DeepSeek Harness: MEMORY.md, daily notes the agent writes itself, nightly Auto Dream consolidation, hybrid BM25 + vector search with wikilink expansion, and a knowledge panel.",
   "license": "MIT",

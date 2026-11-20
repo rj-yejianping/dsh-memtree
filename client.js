@@ -26,7 +26,7 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useCallback, useMemo, useRef } = React
 
     // Shown in the page header so a stale browser bundle is obvious at a glance.
-    const PANEL_VERSION = '0.18.4'
+    const PANEL_VERSION = '0.18.6'
     const ZH = (navigator.language || 'en').toLowerCase().startsWith('zh')
     const TEXT = {
       zh: {
